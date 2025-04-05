@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+      "mcp-books": {
+          "command": "put here the command to start the server",
+          "args": [],
+          "env": {
+            "API_USERNAME": "put your username here",
+            "API_PASSWORD": "put your password here"
+          }
+        }
+      }
+    }
