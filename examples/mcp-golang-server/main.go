@@ -41,6 +41,17 @@ func main() {
 		panic(err)
 	}
 
+	err = server.RegisterTool("add-book", "Adds a book to the list", func(arguments client.AddBookJSONRequestBody) (*mcp_golang.ToolResponse, error) {
+		resp, err := restClient.AddBookWithResponse(context.TODO(), arguments)
+		if err != nil {
+			return nil, fmt.Errorf("error calling the book creation: %v", err)
+		}
+		return mcp_golang.NewToolResponse(mcp_golang.NewTextContent(string(resp.Body))), nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	err = server.Serve()
 	if err != nil {
 		panic(err)

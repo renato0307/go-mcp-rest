@@ -4,6 +4,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,17 @@ import (
 
 	"github.com/oapi-codegen/runtime"
 )
+
+const (
+	BasicScopes = "basic.Scopes"
+)
+
+// AddBookParams defines model for AddBookParams.
+type AddBookParams struct {
+	Author *string `json:"Author,omitempty"`
+	ISBN   *string `json:"ISBN,omitempty"`
+	Name   *string `json:"Name,omitempty"`
+}
 
 // Books defines model for Books.
 type Books struct {
@@ -27,6 +39,9 @@ type Books struct {
 type ListBooksParams struct {
 	Filter *string `form:"Filter,omitempty" json:"Filter,omitempty"`
 }
+
+// AddBookJSONRequestBody defines body for AddBook for application/json ContentType.
+type AddBookJSONRequestBody = AddBookParams
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -101,8 +116,37 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// AddBookWithBody request with any body
+	AddBookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AddBook(ctx context.Context, body AddBookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListBooks request
 	ListBooks(ctx context.Context, params *ListBooksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) AddBookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddBookRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddBook(ctx context.Context, body AddBookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddBookRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) ListBooks(ctx context.Context, params *ListBooksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -115,6 +159,46 @@ func (c *Client) ListBooks(ctx context.Context, params *ListBooksParams, reqEdit
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewAddBookRequest calls the generic AddBook builder with application/json body
+func NewAddBookRequest(server string, body AddBookJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddBookRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAddBookRequestWithBody generates requests for AddBook with any type of body
+func NewAddBookRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/AddBook")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
 }
 
 // NewListBooksRequest generates requests for ListBooks
@@ -209,8 +293,35 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// AddBookWithBodyWithResponse request with any body
+	AddBookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddBookResponse, error)
+
+	AddBookWithResponse(ctx context.Context, body AddBookJSONRequestBody, reqEditors ...RequestEditorFn) (*AddBookResponse, error)
+
 	// ListBooksWithResponse request
 	ListBooksWithResponse(ctx context.Context, params *ListBooksParams, reqEditors ...RequestEditorFn) (*ListBooksResponse, error)
+}
+
+type AddBookResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Books
+}
+
+// Status returns HTTPResponse.Status
+func (r AddBookResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddBookResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type ListBooksResponse struct {
@@ -235,6 +346,23 @@ func (r ListBooksResponse) StatusCode() int {
 	return 0
 }
 
+// AddBookWithBodyWithResponse request with arbitrary body returning *AddBookResponse
+func (c *ClientWithResponses) AddBookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddBookResponse, error) {
+	rsp, err := c.AddBookWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddBookResponse(rsp)
+}
+
+func (c *ClientWithResponses) AddBookWithResponse(ctx context.Context, body AddBookJSONRequestBody, reqEditors ...RequestEditorFn) (*AddBookResponse, error) {
+	rsp, err := c.AddBook(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddBookResponse(rsp)
+}
+
 // ListBooksWithResponse request returning *ListBooksResponse
 func (c *ClientWithResponses) ListBooksWithResponse(ctx context.Context, params *ListBooksParams, reqEditors ...RequestEditorFn) (*ListBooksResponse, error) {
 	rsp, err := c.ListBooks(ctx, params, reqEditors...)
@@ -242,6 +370,32 @@ func (c *ClientWithResponses) ListBooksWithResponse(ctx context.Context, params 
 		return nil, err
 	}
 	return ParseListBooksResponse(rsp)
+}
+
+// ParseAddBookResponse parses an HTTP response from a AddBookWithResponse call
+func ParseAddBookResponse(rsp *http.Response) (*AddBookResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddBookResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Books
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseListBooksResponse parses an HTTP response from a ListBooksWithResponse call
